@@ -1,0 +1,32 @@
+# 密钥与环境配置（绝不提交）
+.env
+*.env
+!.env.example
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+
+# 数据库（可自动重建，含本地演示数据）
+data/
+
+# 本地临时文件
+*.tmp
+_*.py
+_*.png
+
+# 数据与素材（只入库代码，以下均不入库）
+backend/textbook/
+docs/
+*.pdf
+*.docx
+*.md
+!README.md
+参赛手册.txt
+数学必修一(含教参及课件）/
+数学必修二(含教参及课件）/
+
+# IDE
+.idea/
+.vscode/
+.workbuddy/

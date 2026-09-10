@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>备课导师 · 青年教师的备课反馈与模拟试讲助手</title>
+<style>
+  /* ============================================================
+     备课导师 · 前端框架 v0.2（对接 OpenAI 兼容模型 / mock fallback）
+     设计语言：教案红笔批注（宣纸 / 墨 / 红笔）
+     技术栈：原生 HTML + CSS + JS（零构建，FastAPI 静态托管）
+     ============================================================ */
+
+  :root {
+    /* 纸与墨（浅色：宣纸） */
+    --paper:        #F7F2E9;
+    --paper-deep:   #EFE7D8;
+    --card:         #FDFBF5;
+    --card-border:  #E4D9C4;
+    --field-bg:     #FFFEFB;
+    --ink:          #2E2B26;
+    --ink-soft:     #6B6358;
+    --ink-faint:    #9C9283;
+    /* 红笔 */
+    --red:          #C0442E;
+    --red-deep:     #9C3423;
+    --red-soft:     #F3DDD6;
+    --red-line:     #D98A76;
+    --red-fg:       #FFF8F0;
+    /* 语义色（非强调色，仅状态语义） */
+    --green:        #3F6B54;
+    --green-deep:   #24392C;
+    --green-soft:   #E2EBE3;
+    --green-fg:     #F4F8F3;
+    --gold:         #B98A2F;
+    --gold-soft:    #F4EAD5;
+    /* 结构 */
+    --radius:       10px;
+    --radius-sm:    6px;
+    --shadow:       0 1px 3px rgba(46,43,38,.08), 0 6px 24px rgba(46,43,38,.06);
+    --shadow-lg:    0 4px 12px rgba(46,43,38,.10), 0 20px 50px rgba(46,43,38,.10);
+    --toast-bg:     #2E2B26;
+    --toast-fg:     #FDFBF5;
+    --serif:        "Noto Serif SC","Source Han Serif SC","Songti SC",STSong,serif;
+    --sans:         "Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --kai:          "Kaiti SC","STKaiti","KaiTi",serif;
+  }
+
+  /* 暗色主题：墨夜（纸墨美学的暗面） */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:        #1D1A16;
+      --paper-deep:   #26221D;
+      --card:         #241F1A;
+      --card-border:  #3B342B;
+      --field-bg:     #2B251F;
+      --ink:          #EDE6D8;
+      --ink-soft:     #B9AE9C;
+      --ink-faint:    #8A7F6E;
+      --red:          #E06A4E;
+      --red-deep:     #F2A18B;
+      --red-soft:     #3E241D;
+      --red-line:     #A85A44;
+      --red-fg:       #2A1008;
+      --green:        #8FBFA6;
+      --green-deep:   #DCE8DE;
+      --green-soft:   #22332A;
+      --green-fg:     #101B14;
+      --gold:         #D9B25C;
+      --gold-soft:    #3A2E18;
+      --shadow:       0 1px 3px rgba(0,0,0,.30), 0 6px 24px rgba(0,0,0,.28);
+      --shadow-lg:    0 4px 12px rgba(0,0,0,.40), 0 20px 50px rgba(0,0,0,.40);
+      --toast-bg:     #EDE6D8;
+      --toast-fg:     #1D1A16;
+    }
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  html, body { height:100%; }
+
+  body {
+    font-family: var(--sans);
+    color: var(--ink);
+    background: var(--paper);
+    /* 纸张颗粒纹理（单一红笔强调色） */
+    background-image:
+      radial-gradient(circle at 18% 22%, rgba(192,68,46,.05) 0, transparent 42%),
+      radial-gradient(circle at 85% 12%, rgba(192,68,46,.04) 0, transparent 40%),
+      radial-gradient(circle at 60% 95%, rgba(192,68,46,.04) 0, transparent 45%);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: var(--red-soft); color: var(--red-deep); }
+
+  button { font-family: inherit; cursor:pointer; border:none; background:none; }
+  input, select, textarea { font-family: inherit; }
+
+  /* ================= 通用组件 ================= */
+
+  .btn {
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding:10px 20px; border-radius:var(--radius-sm);
+    font-size:14px; font-weight:600; letter-spacing:.02em;
+    border:1px solid transparent; transition:all .18s ease;
+  }
+  .btn-red   { background:var(--red); color:var(--red-fg); box-shadow:0 2px 6px rgba(192,68,46,.25); }
+  .btn-red:hover { background:var(--red-deep); color:var(--paper); transform:translateY(-1px); }
+  .btn-ghost { background:transparent; color:var(--ink-soft); border-color:var(--card-border); }
+  .btn-ghost:hover { border-color:var(--red-line); color:var(--red); background:var(--red-soft); }
+  .btn-green { background:var(--green); color:var(--green-fg); }
+  .btn-green:hover { filter:brightness(1.08); transform:translateY(-1px); }
+  .btn:disabled { opacity:.45; cursor:not-allowed; transform:none; }
+
+  .chip {
+    display:inline-flex; align-items:center; gap:5px;
+    padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600;
+  }
+  .chip-red   { background:var(--red-soft);   color:var(--red-deep); }
+  .chip-green { background:var(--green-soft); color:var(--green); }
+  .chip-ev    { background:var(--red-soft); color:var(--red-deep); font-size:10.5px; }
+  .chip-gold  { background:var(--gold-soft);  color:var(--gold); }
+  .chip-gray  { background:var(--paper-deep); color:var(--ink-soft); }
+
+  .conf {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:2px 8px; border-radius:4px; font-size:11.5px; font-weight:700;
+  }
+  .conf-high { background:var(--green-soft); color:var(--green); }
+  .conf-mid  { background:var(--gold-soft);  color:var(--gold); }
+  .conf-low  { background:var(--red-soft);   color:var(--red-deep); }
+
+  .card {
+    background:var(--card); border:1px solid var(--card-border);
+    border-radius:var(--radius); box-shadow:var(--shadow);
+  }
+
+  /* 红笔批注效果 */
+  .redmark { position:relative; padding-left:14px; }
+  .redmark::before {
+    content:""; position:absolute; left:0; top:2px; bottom:2px; width:3px;
+    background:var(--red); border-radius:2px;
+    transform:rotate(0.4deg);
+  }
+
+  /* 楷体批注（像老师手写） */
+  .kai { font-family:var(--kai); }
+
+  /* ================= 登录页 ================= */
+
+  #login {
+    min-height:100vh; display:flex; align-items:stretch;
+  }
+  .login-left {
+    flex:1.25; padding:60px 64px; display:flex; flex-direction:column; justify-content:center;
+    position:relative; overflow:hidden;
+  }
+  .login-left::after {
+    content:""; position:absolute; right:-80px; top:50%; width:340px; height:340px;
+    border:1px solid var(--red-line); border-radius:50%; opacity:.35; transform:translateY(-50%);
+  }
+  .login-left::before {
+    content:""; position:absolute; right:30px; top:50%; width:140px; height:140px;
+    background:var(--red); border-radius:50%; opacity:.06; transform:translateY(-50%);
+  }
+  .login-right {
+    flex:1; display:flex; align-items:center; justify-content:center;
+    background:var(--card); border-left:1px solid var(--card-border); padding:40px;
+  }
+
+  .brand { display:flex; align-items:center; gap:14px; margin-bottom:56px; }
+  .brand-seal {
+    width:46px; height:46px; background:var(--red); color:var(--red-fg); border-radius:8px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--serif); font-size:24px; font-weight:700;
+    box-shadow: inset 0 0 0 1.5px rgba(255,246,237,.55), 0 4px 10px rgba(192,68,46,.3);
+  }
+  .brand-name { font-family:var(--serif); font-size:22px; font-weight:700; letter-spacing:.06em; }
+  .brand-sub { font-size:12px; color:var(--ink-faint); letter-spacing:.18em; margin-top:2px; }
+
+  .login-hero h1 {
+    font-family:var(--serif); font-size:42px; line-height:1.35; font-weight:800; letter-spacing:.02em;
+  }
+  .login-hero h1 .red { color:var(--red); position:relative; }
+  .login-hero p {
+    margin-top:22px; color:var(--ink-soft); font-size:16px; line-height:1.9; max-width:460px;
+  }
+  .login-hero .pts { margin-top:38px; display:flex; flex-direction:column; gap:16px; }
+  .login-hero .pt { display:flex; gap:14px; align-items:flex-start; }
+  .login-hero .pt-n {
+    width:26px; height:26px; flex:none; border-radius:50%; background:var(--paper-deep);
+    color:var(--red-deep); font-size:13px; font-weight:700; font-family:var(--serif);
+    display:flex; align-items:center; justify-content:center; margin-top:2px;
+  }
+  .login-hero .pt b { display:block; font-size:15px; }
+  .login-hero .pt span { font-size:13.5px; color:var(--ink-soft); line-height:1.7; }
+
+  .login-card { width:100%; max-width:380px; }
+  .login-card h2 { font-family:var(--serif); font-size:24px; font-weight:800; }
+  .login-card .tip { margin:8px 0 28px; font-size:13px; color:var(--ink-faint); }
+  .field { margin-bottom:16px; }
+  .field label { display:block; font-size:12.5px; font-weight:600; color:var(--ink-soft); margin-bottom:7px; }
+  .field .input-wrap { position:relative; }
+  .field input, .field select {
+    width:100%; padding:12px 14px; border:1px solid var(--card-border); border-radius:var(--radius-sm);
+    font-size:14px; color:var(--ink); background:var(--field-bg); transition:border .18s, box-shadow .18s;
+  }
+  .field input:focus, .field select:focus {
+    outline:none; border-color:var(--red-line); box-shadow:0 0 0 3px var(--red-soft);
+  }
+  .field .send-code {
+    position:absolute; right:8px; top:50%; transform:translateY(-50%);
+    font-size:12.5px; color:var(--red); font-weight:600; padding:6px 10px;
+  }
+  .field .send-code:disabled { color:var(--ink-faint); }
+  .login-card .btn { width:100%; margin-top:10px; padding:13px; font-size:15px; }
+  .login-foot { margin-top:22px; text-align:center; font-size:12px; color:var(--ink-faint); line-height:1.8; }
+
+  /* ================= 主应用框架 ================= */
+
+  #app { display:none; height:100vh; }
+
+  .topbar {
+    height:62px; background:var(--card); border-bottom:1px solid var(--card-border);
+    display:flex; align-items:center; padding:0 26px; gap:20px; position:relative; z-index:20;
+  }
+  .topbar .brand { margin:0; gap:11px; }
+  .topbar .brand-seal { width:34px; height:34px; font-size:18px; border-radius:6px; }
+  .topbar .brand-name { font-size:17px; }
+  .topbar .brand-sub { display:none; }
+  .topbar-right { margin-left:auto; display:flex; align-items:center; gap:14px; }
+  .class-switch {
+    display:flex; align-items:center; gap:8px; padding:7px 14px;
+    border:1px solid var(--card-border); border-radius:999px; background:var(--paper);
+    font-size:13px; color:var(--ink-soft); transition:border .18s;
+  }
+  .class-switch:hover { border-color:var(--red-line); }
+  .class-switch .dot { width:7px; height:7px; border-radius:50%; background:var(--green); }
+  .user-avatar {
+    width:34px; height:34px; border-radius:50%; background:var(--green);
+    color:var(--green-fg); font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center;
+  }
+
+  .layout { display:flex; height:calc(100vh - 62px); }
+
+  .sidebar {
+    width:218px; flex:none; background:var(--card); border-right:1px solid var(--card-border);
+    padding:22px 14px; display:flex; flex-direction:column; gap:4px;
+  }
+  .side-item {
+    display:flex; align-items:center; gap:12px; padding:11px 14px; border-radius:var(--radius-sm);
+    font-size:14px; color:var(--ink-soft); font-weight:500; transition:all .16s; text-align:left;
+  }
+  .side-item .ico { width:18px; height:18px; display:flex; align-items:center; justify-content:center; opacity:.8; }
+  .side-item:hover { background:var(--paper); color:var(--ink); }
+  .side-item.active { background:var(--red-soft); color:var(--red-deep); font-weight:700; }
+  .side-item.active .ico { opacity:1; }
+  .side-group-label {
+    font-size:11px; color:var(--ink-faint); letter-spacing:.14em; padding:14px 14px 6px;
+  }
+  .sidebar-foot {
+    margin-top:auto; padding:12px 14px; font-size:11.5px; color:var(--ink-faint); line-height:1.7;
+    border-top:1px dashed var(--card-border);
+  }
+
+  .main { flex:1; overflow-y:auto; padding:32px 40px 60px; }
+  .page { display:none; max-width:960px; margin:0 auto; animation:pageIn .34s ease; }
+  .page.active { display:block; }
+  @keyframes pageIn { from { opacity:0; transform:translateY(8px);} to {opacity:1; transform:none;} }
+
+  .page-head { margin-bottom:26px; }
+  .page-head h2 { font-family:var(--serif); font-size:26px; font-weight:800; letter-spacing:.02em; }
+  .page-head p { margin-top:7px; font-size:13.5px; color:var(--ink-soft); line-height:1.8; }
+
+  /* ================= 教案反馈页 ================= */
+
+  .upload-zone {
+    border:2px dashed var(--card-border); border-radius:var(--radius);
+    background:var(--card); padding:52px 30px; text-align:center; cursor:pointer;
+    transition:all .2s; position:relative;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color:var(--red); background:var(--card); }
+  .upload-zone .u-ico {
+    width:56px; height:56px; margin:0 auto 18px; border-radius:14px; background:var(--red-soft);
+    display:flex; align-items:center; justify-content:center; color:var(--red-deep);
+  }
+  .upload-zone h3 { font-size:17px; font-weight:700; }
+  .upload-zone h3 .red { color:var(--red); }
+  .upload-zone .sub { margin-top:8px; font-size:13px; color:var(--ink-faint); line-height:1.8; }
+  .upload-zone .fmt { margin-top:16px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+
+  .lesson-meta { display:flex; gap:14px; margin-top:22px; flex-wrap:wrap; align-items:center; }
+  .lesson-meta select {
+    padding:10px 14px; border:1px solid var(--card-border); border-radius:var(--radius-sm);
+    background:var(--card); font-size:13.5px; color:var(--ink);
+  }
+  .lesson-meta select:focus { outline:none; border-color:var(--red-line); }
+
+  .progress-panel { margin-top:22px; display:none; }
+  .progress-panel.show { display:block; }
+  .progress-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .progress-head b { font-size:14px; }
+  .progress-head span { font-size:12.5px; color:var(--ink-faint); }
+  .progress-bar { height:8px; background:var(--paper-deep); border-radius:99px; overflow:hidden; }
+  .progress-bar i {
+    display:block; height:100%; width:0%; background:linear-gradient(90deg,var(--red),var(--red-line));
+    border-radius:99px; transition:width .4s ease;
+  }
+  .progress-steps { margin-top:14px; display:flex; gap:18px; flex-wrap:wrap; }
+  .progress-steps .st { font-size:12.5px; color:var(--ink-faint); display:flex; align-items:center; gap:6px; }
+  .progress-steps .st.done { color:var(--green); }
+  .progress-steps .st.on { color:var(--red-deep); font-weight:600; }
+  .progress-steps .st i {
+    width:15px; height:15px; border-radius:50%; border:1.5px solid currentColor; display:flex;
+    align-items:center; justify-content:center; font-size:10px; font-style:normal;
+  }
+
+  /* 报告 */
+  .report { display:none; margin-top:30px; }
+  .report.show { display:block; animation:pageIn .4s ease; }
+  .report-head {
+    display:flex; align-items:flex-start; justify-content:space-between; gap:20px;
+    padding:20px 24px; border-bottom:1px solid var(--card-border); margin-bottom:24px;
+  }
+  .report-head h3 { font-family:var(--serif); font-size:19px; font-weight:800; }
+  .report-head .meta { margin-top:6px; font-size:12.5px; color:var(--ink-faint); }
+  .report-summary {
+    font-family:var(--kai); font-size:14.5px; color:var(--ink-soft); line-height:2;
+    padding:14px 20px; background:var(--paper); border-left:3px solid var(--red);
+    border-radius:0 var(--radius-sm) var(--radius-sm) 0; margin-bottom:26px;
+  }
+
+  .top3 { display:grid; grid-template-columns:1fr; gap:16px; margin-bottom:28px; }
+  .top-item { padding:20px 22px; position:relative; }
+  .top-item::before {
+    content:""; position:absolute; left:-1px; top:18px; bottom:18px; width:4px;
+    background:var(--red); border-radius:2px;
+  }
+  .top-item .rank {
+    position:absolute; right:20px; top:-14px; width:34px; height:34px; border-radius:50%;
+    background:var(--red); color:var(--red-fg); font-family:var(--serif); font-weight:800; font-size:17px;
+    display:flex; align-items:center; justify-content:center; box-shadow:0 3px 8px rgba(192,68,46,.35);
+  }
+  .top-item .dim { font-size:11.5px; font-weight:700; letter-spacing:.06em; color:var(--red-deep); }
+  .top-item h4 { margin:7px 0 9px; font-size:16px; line-height:1.6; }
+  .top-item .quote {
+    font-size:13px; color:var(--ink-soft); background:var(--paper); padding:10px 14px;
+    border-radius:var(--radius-sm); border-left:2px solid var(--card-border); margin:10px 0; line-height:1.8;
+  }
+  .top-item .quote b { color:var(--red-deep); font-weight:700; }
+  .top-item .fix { font-size:13.5px; line-height:1.9; color:var(--ink); }
+  .top-item .fix .arrow { color:var(--red); font-weight:700; margin-right:6px; }
+  .top-item .why { margin-top:10px; font-size:12.5px; color:var(--ink-soft); padding-top:9px; border-top:1px dashed var(--card-border); }
+  .top-item .why b { color:var(--red-deep); font-weight:700; }
+  .adopt-row { display:flex; gap:10px; margin-top:14px; }
+  .adopt-btn {
+    font-size:12.5px; font-weight:600; padding:7px 16px; border-radius:999px;
+    border:1px solid var(--card-border); color:var(--ink-soft); transition:all .16s;
+  }
+  .adopt-btn:hover { border-color:var(--red-line); }
+  .adopt-btn.on-adopt { background:var(--green); color:var(--green-fg); border-color:var(--green); }
+  .adopt-btn.on-ignore { background:var(--ink-soft); color:var(--paper); border-color:var(--ink-soft); }
+
+  .dims { display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
+  .dim-tab {
+    padding:8px 18px; border-radius:999px; font-size:13px; font-weight:600;
+    border:1px solid var(--card-border); color:var(--ink-soft); background:var(--card); transition:all .16s;
+  }
+  .dim-tab.active { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  .dim-panel { display:none; }
+  .dim-panel.active { display:block; animation:pageIn .3s ease; }
+  .dim-issue { padding:18px 20px; margin-bottom:12px; }
+  .dim-issue h5 { font-size:14.5px; margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+  .dim-issue .quote { font-size:12.8px; }
+  .dim-issue .fix { font-size:13.2px; margin-top:10px; }
+
+  /* ================= 学生预判页 ================= */
+
+  .predict-form { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .predict-form input {
+    flex:1; min-width:260px; padding:13px 16px; border:1px solid var(--card-border);
+    border-radius:var(--radius-sm); background:var(--card); font-size:14.5px;
+  }
+  .predict-form input:focus { outline:none; border-color:var(--red-line); box-shadow:0 0 0 3px var(--red-soft); }
+
+  .predict-result { margin-top:26px; display:none; }
+  .predict-result.show { display:block; animation:pageIn .4s ease; }
+  .predict-note {
+    font-family:var(--kai); font-size:13.5px; color:var(--ink-soft); line-height:1.9;
+    padding:12px 18px; background:var(--paper); border-radius:var(--radius-sm); margin-bottom:20px;
+    border:1px dashed var(--card-border);
+  }
+  .predict-list { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:880px){ .predict-list { grid-template-columns:1fr; } }
+  .predict-card { padding:20px 22px; }
+  .predict-card .pc-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .predict-card .pc-step { font-size:15px; font-weight:700; line-height:1.6; }
+  .predict-card .pc-wrong {
+    margin-top:10px; font-size:13px; background:var(--red-soft); border-radius:var(--radius-sm);
+    padding:9px 13px; color:var(--red-deep); line-height:1.8;
+  }
+  .predict-card .pc-wrong b { font-weight:700; }
+  .predict-card .pc-cause { margin-top:10px; font-size:13px; color:var(--ink-soft); line-height:1.8; }
+  .predict-card .pc-fix { margin-top:10px; font-size:13.2px; line-height:1.8; }
+  .predict-card .pc-fix .arrow { color:var(--red); font-weight:700; }
+
+  /* ================= 模拟试讲页 ================= */
+
+  .sim-levels { display:flex; gap:10px; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
+  .sim-levels .label { font-size:13px; color:var(--ink-faint); margin-right:4px; }
+  .level-btn {
+    padding:8px 20px; border-radius:999px; font-size:13.5px; font-weight:600;
+    border:1.5px solid var(--card-border); color:var(--ink-soft); background:var(--card); transition:all .16s;
+  }
+  .level-btn:hover { border-color:var(--red-line); }
+  .level-btn.active { background:var(--red); color:var(--red-fg); border-color:var(--red); box-shadow:0 3px 10px rgba(192,68,46,.3); }
+
+  .chat-shell { display:flex; flex-direction:column; height:600px; }
+  .chat-head {
+    padding:16px 22px; border-bottom:1px solid var(--card-border);
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .chat-head .ch-title { font-size:14.5px; font-weight:700; }
+  .chat-head .ch-sub { font-size:12px; color:var(--ink-faint); margin-top:3px; }
+  .chat-body { flex:1; overflow-y:auto; padding:24px 22px; display:flex; flex-direction:column; gap:18px;
+    background:repeating-linear-gradient(transparent, transparent 31px, color-mix(in srgb, var(--card-border) 55%, transparent) 31px, color-mix(in srgb, var(--card-border) 55%, transparent) 32px); }
+  .msg { display:flex; gap:12px; max-width:78%; animation:msgIn .3s ease; }
+  @keyframes msgIn { from { opacity:0; transform:translateY(6px);} to {opacity:1; transform:none;} }
+  .msg.teacher { align-self:flex-end; flex-direction:row-reverse; }
+  .msg .av {
+    width:34px; height:34px; flex:none; border-radius:50%; display:flex; align-items:center;
+    justify-content:center; font-size:13px; font-weight:700; margin-top:2px;
+  }
+  .msg.teacher .av { background:var(--green); color:var(--green-fg); }
+  .msg.student .av { background:var(--red); color:var(--red-fg); font-family:var(--kai); }
+  .msg .bubble { padding:12px 16px; border-radius:12px; font-size:14px; line-height:1.85; }
+  .msg.teacher .bubble { background:var(--green-soft); color:var(--green-deep); border-top-right-radius:4px; }
+  .msg.student .bubble { background:var(--card); border:1px solid var(--card-border); border-top-left-radius:4px; font-family:var(--kai); font-size:14.5px; }
+  .msg.student .bubble .thought { display:block; font-size:12px; color:var(--ink-faint); font-family:var(--sans); margin-top:6px; }
+
+  .chat-input { display:flex; gap:10px; padding:16px 18px; border-top:1px solid var(--card-border); }
+  .chat-input input {
+    flex:1; padding:12px 16px; border:1px solid var(--card-border); border-radius:var(--radius-sm);
+    font-size:14px; background:var(--field-bg);
+  }
+  .chat-input input:focus { outline:none; border-color:var(--red-line); box-shadow:0 0 0 3px var(--red-soft); }
+  .chat-input .btn { padding:12px 24px; }
+
+  .sim-end-row { display:flex; gap:12px; margin-top:16px; flex-wrap:wrap; }
+  .sim-summary { display:none; margin-top:22px; }
+  .sim-summary.show { display:block; animation:pageIn .4s ease; }
+  .sim-summary h4 { font-family:var(--serif); font-size:17px; margin-bottom:16px; }
+  .ss-block { padding:18px 20px; margin-bottom:14px; }
+  .ss-block h5 { font-size:14px; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+  .ss-block h5 .tag { width:20px; height:20px; border-radius:5px; font-size:12px; display:flex; align-items:center; justify-content:center; color:var(--paper); }
+  .ss-block .ok  .tag { background:var(--green); }
+  .ss-block .issue .tag { background:var(--red); }
+  .ss-block ul { padding-left:0; list-style:none; }
+  .ss-block li {
+    font-size:13.5px; line-height:1.9; color:var(--ink-soft); padding:6px 0 6px 20px; position:relative;
+  }
+  .ss-block li::before { content:"·"; position:absolute; left:6px; color:var(--red-line); }
+  .ss-block li b { color:var(--ink); }
+
+  /* ================= 班级设置页 ================= */
+
+  .set-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media (max-width:880px){ .set-grid { grid-template-columns:1fr; } }
+  .set-card { padding:22px 24px; }
+  .set-card h4 { font-size:15.5px; font-weight:700; margin-bottom:4px; }
+  .set-card .sc-sub { font-size:12.5px; color:var(--ink-faint); margin-bottom:18px; }
+  .model-mode { display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
+  .model-mode .mm {
+    display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-soft);
+    padding:9px 12px; border:1px solid var(--card-border); border-radius:8px; cursor:pointer;
+    transition:all .15s;
+  }
+  .model-mode .mm:hover { border-color:var(--accent); }
+  .model-mode .mm input { accent-color:var(--accent); }
+  .model-mode .mm:has(input:checked) { border-color:var(--accent); background:var(--accent-soft); color:var(--ink); }
+  .field-group { display:none; flex-direction:column; gap:10px; margin-bottom:14px; }
+  .field-group .field { display:flex; flex-direction:column; gap:5px; }
+  .field-group .field label { font-size:12px; color:var(--ink-faint); }
+  .field-group .field input {
+    padding:9px 11px; border:1px solid var(--card-border); border-radius:8px; background:var(--card);
+    color:var(--ink); font-size:13px; outline:none; transition:border-color .15s;
+  }
+  .field-group .field input:focus { border-color:var(--accent); }
+  .model-actions { display:flex; gap:10px; }
+  .model-actions .btn { flex:1; }
+  /* 我的档案 */
+  .db-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .db-stat { padding:12px 14px; border:1px solid var(--card-border); border-radius:10px; background:var(--paper); }
+  .db-stat b { display:block; font-size:22px; color:var(--ink); font-weight:800; line-height:1.1; }
+  .db-stat span { font-size:12px; color:var(--ink-faint); }
+  .pf-style { text-align:center; padding:6px 0 4px; }
+  .pf-style .badge { display:inline-flex; align-items:center; gap:7px; font-size:18px; font-weight:800; }
+  .pf-style .badge svg { color:var(--red-deep); }
+  .pf-style .desc { margin-top:8px; font-size:13px; color:var(--ink-soft); line-height:1.6; }
+  .pf-block h4 { font-size:14px; margin:2px 0 10px; display:flex; align-items:center; gap:7px; }
+  .pf-block h4 svg { color:var(--red-deep); }
+  .insight {
+    position:relative; padding:13px 14px 13px 16px; margin-bottom:10px;
+    border:1px solid var(--card-border); border-radius:10px; background:var(--paper);
+  }
+  .insight::before { content:""; position:absolute; left:6px; top:14px; bottom:14px; width:3px; border-radius:2px;
+    background:var(--red); opacity:.35; }
+  .insight .tag { display:flex; gap:7px; align-items:center; margin-bottom:6px; }
+  .insight .tag .kit { font-size:11px; padding:2px 8px; border-radius:99px; background:var(--red-soft); color:var(--red-deep); font-weight:700; }
+  .insight .tag .conf { font-size:11px; color:var(--ink-faint); }
+  .insight .finding { font-size:13.2px; color:var(--ink); line-height:1.6; }
+  .insight .ev { margin-top:8px; font-size:12px; color:var(--ink-soft); background:var(--card); border-left:2px solid var(--card-border);
+    padding:7px 10px; border-radius:0 6px 6px 0; line-height:1.5; }
+  .insight .ev::before { content:"证据 "; font-size:11px; color:var(--red-deep); font-weight:700; }
+  .sug { display:flex; gap:9px; padding:11px 0; border-bottom:1px dashed var(--card-border); font-size:13.2px; color:var(--ink); line-height:1.6; }
+  .sug:last-child { border-bottom:none; }
+  .sug .num { flex:none; width:20px; height:20px; border-radius:50%; background:var(--red-soft); color:var(--red-deep);
+    font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; margin-top:1px; }
+  .pf-need { display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px dashed var(--card-border);
+    border-radius:10px; background:var(--paper); }
+  .pf-need .p-in { flex:1; font-size:13px; color:var(--ink-soft); line-height:1.6; }
+  .pf-need .p-in b { color:var(--ink); }
+  .pf-need .kit { font-size:12px; padding:4px 10px; border-radius:99px; background:var(--red-soft); color:var(--red-deep); font-weight:700; white-space:nowrap; }
+  .pf-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; }
+  .pf-stale { font-size:12px; color:var(--red-deep); }
+  .mastery-row {
+    display:flex; justify-content:space-between; align-items:center; padding:11px 0;
+    border-bottom:1px dashed var(--card-border); font-size:13.5px;
+  }
+  .mastery-row:last-child { border-bottom:none; }
+  .m-levels { display:flex; gap:6px; }
+  .m-levels button {
+    width:34px; height:26px; border-radius:5px; font-size:12.5px; font-weight:600;
+    border:1px solid var(--card-border); color:var(--ink-soft); background:var(--card); transition:all .15s;
+  }
+  .m-levels button.good { background:var(--green-soft); color:var(--green); border-color:var(--green); }
+  .m-levels button.mid  { background:var(--gold-soft);  color:var(--gold);  border-color:var(--gold); }
+  .m-levels button.weak { background:var(--red-soft);   color:var(--red-deep); border-color:var(--red); }
+  .set-foot { margin-top:22px; display:flex; gap:12px; }
+
+  /* ================= 提示条 ================= */
+
+  #toast {
+    position:fixed; bottom:34px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:var(--toast-bg); color:var(--toast-fg); padding:12px 26px; border-radius:999px;
+    font-size:13.5px; box-shadow:var(--shadow-lg); opacity:0; transition:all .3s ease; z-index:99;
+  }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* 滚动条 */
+  ::-webkit-scrollbar { width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb { background:var(--card-border); border-radius:99px; border:2px solid var(--paper); }
+  ::-webkit-scrollbar-thumb:hover { background:var(--red-line); }
+
+  /* 无障碍：尊重系统减弱动态偏好 */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration:.01ms !important;
+      animation-iteration-count:1 !important;
+      transition-duration:.01ms !important;
+      scroll-behavior:auto !important;
+    }
+  }
+
+  /* 首屏载入动画 */
+  .login-left > * { animation:pageIn .5s ease both; }
+  .login-left > *:nth-child(2) { animation-delay:.08s; }
+  .login-left > *:nth-child(3) { animation-delay:.16s; }
+</style>
+</head>
+<body>
+
+<!-- ==================== 登录页 ==================== -->
+<div id="login">
+  <div class="login-left">
+    <div class="brand">
+      <div class="brand-seal">备</div>
+      <div>
+        <div class="brand-name">备课导师</div>
+        <div class="brand-sub">LESSON PREP MENTOR</div>
+      </div>
+    </div>
+    <div class="login-hero">
+      <h1>备课，先讲给<br><span class="red">模拟学生</span>听一遍</h1>
+      <p>青年教师的教学预判与试讲助手。上传教案，30 秒拿到五维反馈；真实上课前，先用可调档的模拟学生验证讲法能不能听懂。</p>
+      <div class="pts">
+        <div class="pt">
+          <div class="pt-n">一</div>
+          <div><b>五维反馈</b><span>目标可测性、重难点、例题适配、学生预判、课堂结构，每条引用原文、给可替换例子</span></div>
+        </div>
+        <div class="pt">
+          <div class="pt-n">二</div>
+          <div><b>模拟试讲</b><span>优 / 中 / 弱三档学生随时切换，验证同一讲法的上下限</span></div>
+        </div>
+        <div class="pt">
+          <div class="pt-n">三</div>
+          <div><b>越用越懂</b><span>班级记忆 + 采纳闭环，反馈越来越贴你的班</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="login-right">
+    <div class="login-card">
+      <h2>登录 / 注册</h2>
+      <p class="tip">手机验证码登录，无需密码</p>
+      <div class="field">
+        <label>手机号</label>
+        <div class="input-wrap">
+          <input id="phone" type="tel" placeholder="请输入手机号" maxlength="11" value="138****8888">
+        </div>
+      </div>
+      <div class="field">
+        <label>验证码</label>
+        <div class="input-wrap">
+          <input id="code" type="text" placeholder="6 位验证码" maxlength="6">
+          <button class="send-code" id="sendCode">获取验证码</button>
+        </div>
+      </div>
+      <button class="btn btn-red" id="loginBtn" style="width:100%">进入工作台</button>
+      <div class="login-foot">仅教师端使用 · 不接触任何学生个人数据<br>演示版：任意验证码即可进入</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 主应用 ==================== -->
+<div id="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-seal">备</div>
+      <div class="brand-name">备课导师</div>
+    </div>
+    <button class="class-switch"><span class="dot"></span>高二（3）班 · 人教A版必修二</button>
+    <div class="topbar-right">
+      <button class="class-switch" onclick="showToast('班级切换：v0.1 演示版暂只内置一个班级')">切换班级</button>
+      <div class="user-avatar">林</div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <nav class="sidebar">
+      <button class="side-item active" data-page="feedback">
+        <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>教案反馈
+      </button>
+      <button class="side-item" data-page="predict">
+        <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 5v8l-7 5-7-5V8l7-5z"/></svg></span>学生预判
+      </button>
+      <button class="side-item" data-page="simulate">
+        <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg></span>模拟试讲
+      </button>
+      <button class="side-item" data-page="settings">
+        <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.7h4l.4-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.06-.4.1-.8.1-1.2z"/></svg></span>班级设置
+      </button>
+      <button class="side-item" data-page="profile">
+        <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 20v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1"/><circle cx="12" cy="7" r="3"/><path d="M4 3h16M4 7h3M17 7h3M4 11h16M4 15h3M17 15h3"/></svg></span>我的档案
+      </button>
+      <div class="side-group-label">参考级 · 不替代教师判断</div>
+      <div class="sidebar-foot">模拟学生基于典型错答模式，<br>非本班学生真实反应。<br>版本 v0.1 演示框架</div>
+    </nav>
+
+    <main class="main">
+
+      <!-- ========== 教案反馈 ========== -->
+      <section class="page active" id="page-feedback">
+        <div class="page-head">
+          <h2>教案反馈</h2>
+          <p>上传教案（docx / txt / md / 文字层 PDF），30 秒拿到五维反馈与「最该改的 3 处」。扫描版请先转为文字格式。</p>
+        </div>
+
+        <div class="card">
+          <div class="upload-zone" id="uploadZone">
+            <div class="u-ico">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+            </div>
+            <h3>把教案拖到这里，或 <span class="red">点击选择文件</span></h3>
+            <div class="sub">演示版已内置一份《函数单调性》教案，点击即可体验完整流程</div>
+            <div class="fmt">
+              <span class="chip chip-gray">DOCX</span>
+              <span class="chip chip-gray">TXT</span>
+              <span class="chip chip-gray">MD</span>
+              <span class="chip chip-gray">PDF 文字层</span>
+            </div>
+          </div>
+          <input type="file" id="fileInput" accept=".docx,.txt,.md,.pdf" style="display:none">
+
+          <div class="lesson-meta" style="padding:0 24px 24px">
+            <select id="lessonType">
+              <option value="新授">课型：新授课（MVP 支持）</option>
+              <option value="复习" disabled>复习课（暂不支持）</option>
+              <option value="习题" disabled>习题课（暂不支持）</option>
+            </select>
+            <select id="chapterSel">
+              <option>章节：必修二 · 第3章 三角恒等变换</option>
+              <option>必修一 · 第2章 一元二次函数、方程和不等式</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 解析进度 -->
+        <div class="card progress-panel" id="progressPanel">
+          <div class="progress-head">
+            <b>正在评估教案</b>
+            <span id="progressPct">0%</span>
+          </div>
+          <div class="progress-bar"><i id="progressBar"></i></div>
+          <div class="progress-steps" id="progressSteps"></div>
+        </div>
+
+        <!-- 反馈报告 -->
+        <div class="report" id="report">
+          <div class="card">
+            <div class="report-head">
+              <div>
+                <h3 id="reportTitle">教案反馈报告</h3>
+                <div class="meta" id="reportMeta">参考级反馈 · 基于班级记忆与认知障碍库</div>
+              </div>
+              <span class="chip chip-green" id="reportBadge">5 个维度已评估</span>
+            </div>
+
+            <div style="padding:0 24px">
+              <div class="report-summary" id="reportSummary"></div>
+            </div>
+
+            <div class="top3" id="top3List" style="padding:0 24px"></div>
+
+            <div style="padding:0 24px 26px">
+              <div class="dims" id="dimTabs"></div>
+              <div id="dimPanels"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== 学生预判 ========== -->
+      <section class="page" id="page-predict">
+        <div class="page-head">
+          <h2>学生预判</h2>
+          <p>输入下节课课题，基于认知障碍库与本班掌握度，预判 3-5 个学生卡点。参考级预判，建议结合本班实际。</p>
+        </div>
+        <div class="card" style="padding:22px 24px">
+          <div class="predict-form">
+            <input id="predictTopic" placeholder="例如：函数的单调性" value="函数的单调性">
+            <button class="btn btn-red" onclick="runPredict()">开始预判</button>
+          </div>
+          <div class="predict-note" style="margin-top:16px;margin-bottom:0">
+            置信度规则：高 = 认知障碍库 / 教材依据命中；中 = 通用教学经验；低 = 仅推测。本班相关章节掌握度为「弱」时仅排序提前，不抬高置信度。
+          </div>
+        </div>
+
+        <div class="predict-result" id="predictResult">
+          <div class="predict-list" id="predictList"></div>
+        </div>
+      </section>
+
+      <!-- ========== 模拟试讲 ========== -->
+      <section class="page" id="page-simulate">
+        <div class="page-head">
+          <h2>模拟试讲</h2>
+          <p>像真实上课一样把课讲给模拟学生听。可随时切换优 / 中 / 弱档位，验证同一讲法的上下限。结束试讲后生成会话小结并写入班级记忆。</p>
+        </div>
+
+        <div class="card chat-shell">
+          <div class="chat-head">
+            <div>
+              <div class="ch-title">《函数单调性》 · 模拟试讲</div>
+              <div class="ch-sub">学生知识基础：必修一全部 + 必修二第1章第1-2节（已掌握）；本课题及之后未学</div>
+            </div>
+            <span class="chip chip-red" id="levelChip">中档学生</span>
+          </div>
+          <div class="sim-levels" style="margin:14px 18px 0">
+            <span class="label">学生档位</span>
+            <button class="level-btn" data-level="优" onclick="setLevel('优')">优</button>
+            <button class="level-btn active" data-level="中" onclick="setLevel('中')">中</button>
+            <button class="level-btn" data-level="弱" onclick="setLevel('弱')">弱</button>
+            <span class="chip chip-gray" style="margin-left:auto">档位只影响掌握扎实度，不影响知识范围</span>
+          </div>
+          <div class="chat-body" id="chatBody"></div>
+          <div class="chat-input">
+            <input id="chatInput" placeholder="对模拟学生说话，例如：我们先来看定义，x1&lt;x2 时 f(x1)&lt;f(x2) 就叫增函数…" onkeydown="if(event.key==='Enter')sendMsg()">
+            <button class="btn btn-red" onclick="sendMsg()">发送</button>
+          </div>
+        </div>
+
+        <div class="sim-end-row">
+          <button class="btn btn-green" onclick="endSim()">结束试讲，生成小结</button>
+          <button class="btn btn-ghost" onclick="resetSim()">重新开始</button>
+        </div>
+
+        <div class="sim-summary" id="simSummary">
+          <h4>会话小结 · 已写入班级记忆</h4>
+          <div class="card ss-block">
+            <h5><span class="tag" style="background:var(--green)">✓</span>讲法顺利通过</h5>
+            <ul>
+              <li>用「爬坡」类比引入单调性，<b>中档学生</b>当场理解并复述正确</li>
+              <li>例题 1 采用「先画图、再验证」两步走，<b>弱档学生</b>也能跟上</li>
+            </ul>
+          </div>
+          <div class="card ss-block">
+            <h5><span class="tag" style="background:var(--red)">!</span>卡点（引用对话原文）</h5>
+            <ul>
+              <li>讲「定义法证明」时<b>弱档学生</b>追问「老师，为什么取 x1&lt;x2 就够，不能取到所有？」，对应认知障碍 <b>「对任意性理解不足」</b></li>
+              <li>讲到<b>辅助角公式</b>，中档学生出现典型错答 sin(α+β) 符号写反</li>
+            </ul>
+          </div>
+          <div class="card ss-block">
+            <h5><span class="tag" style="background:var(--gold)">↗</span>对教案 / 讲法的调整建议</h5>
+            <ul>
+              <li>在引入定义后补一句「这里的任意两个字是这道题的全部意义」，预判弱档「任意性」卡点</li>
+              <li>证明例题前先给一道<b>填空式证明</b>作为脚手架（同反馈报告 Top2）</li>
+              <li>档位对比：优档 1 遍通过；中档在符号处卡 1 次；弱档在任意性与符号处各卡 1 次 → 分层练习建议：弱档先做符号辨析题，优档直接上综合变式</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== 班级设置 ========== -->
+      <section class="page" id="page-settings">
+        <div class="page-head">
+          <h2>班级设置</h2>
+          <p>掌握度是教师主观估计的弱信号，只影响预判排序与建议措辞，不作为置信度依据。可整体跳过。</p>
+        </div>
+        <div class="set-grid">
+          <div class="card set-card">
+            <h4>教材与进度</h4>
+            <div class="sc-sub">MVP 仅支持人教A版</div>
+            <div class="field">
+              <label>教材版本</label>
+              <select><option>人教A版</option></select>
+            </div>
+            <div class="field">
+              <label>册别</label>
+              <select id="bookSel"><option>必修二</option><option>必修一</option></select>
+            </div>
+            <div class="field">
+              <label>当前进度（章节）</label>
+              <select id="chapterProgressSel"><option>请选择</option></select>
+            </div>
+            <div class="field">
+              <label>小节</label>
+              <select id="sectionSel"><option>第1节</option><option>第2节</option><option>第3节</option><option>第4节</option><option>第5节</option></select>
+            </div>
+            <div class="field">
+              <label>当前课题</label>
+              <input id="topicSel" placeholder="如：函数的单调性">
+            </div>
+          </div>
+          <div class="card set-card">
+            <h4>章节掌握度</h4>
+            <div class="sc-sub">好 / 中 / 弱，可随时修改</div>
+            <div id="masteryList"></div>
+          </div>
+          <div class="card set-card">
+            <h4>模型配置</h4>
+            <div class="sc-sub" id="modelStatus">加载中...</div>
+            <div class="model-mode">
+              <label class="mm"><input type="radio" name="mmode" value="builtin" onchange="toggleModelBox()"> 内置模型（tokendance，开箱即用）</label>
+              <label class="mm"><input type="radio" name="mmode" value="custom" onchange="toggleModelBox()"> 自定义模型（OpenAI 兼容）</label>
+            </div>
+            <div id="customModelBox" class="field-group">
+              <div class="field"><label>Base URL</label><input id="modelBase" placeholder="https://api.openai.com/v1"></div>
+              <div class="field"><label>模型名</label><input id="modelName" placeholder="gpt-4o-mini"></div>
+              <div class="field"><label>API Key</label><input id="modelKey" type="password" placeholder="sk-..."></div>
+            </div>
+            <div class="model-actions">
+              <button class="btn btn-ghost" onclick="testModel()">测试连接</button>
+              <button class="btn btn-red" onclick="saveModel()">保存模型</button>
+            </div>
+          </div>
+        </div>
+        <div class="set-foot">
+          <button class="btn btn-red" onclick="saveSettings()">保存设置</button>
+          <button class="btn btn-ghost" onclick="showToast('已重置为默认掌握度（全部「中」）')">重置</button>
+        </div>
+      </section>
+
+      <!-- ========== 我的档案 ========== -->
+      <section class="page" id="page-profile">
+        <div class="page-head">
+          <h2>我的档案</h2>
+          <p>从你的教案评估历史与模拟试讲对话中，确定性提取教学行为信号，沉淀为教学风格画像与带证据的洞察。数据会自动累积。</p>
+        </div>
+
+        <div class="card set-card">
+          <h4>数据基础</h4>
+          <div class="sc-sub">样本越多，风格画像越可靠</div>
+          <div class="db-stats" id="profileData"></div>
+        </div>
+
+        <div id="profileBody">
+          <div class="card set-card">
+            <h4>档案生成中</h4>
+            <div class="sc-sub">请先完成多次教案评估与模拟试讲，再回来查看个性化画像。</div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ==================== 全局 + API 封装 ==================== */
+const $ = s => document.querySelector(s);
+let toastTimer = null;
+function showToast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+async function api(path, body, isForm=false){
+  const opt = isForm ? {method:'POST', body} : {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)};
+  const res = await fetch(path, opt);
+  if(!res.ok){
+    const err = await res.json().catch(()=>({detail:'请求失败'}));
+    throw new Error(err.detail || '请求失败');
+  }
+  return res.json();
+}
+
+/* ==================== 登录 ==================== */
+$('#sendCode').addEventListener('click', function(){
+  const btn = this; let n = 60;
+  btn.disabled = true; btn.textContent = n + 's 后重发';
+  const t = setInterval(()=>{
+    n--; btn.textContent = n + 's 后重发';
+    if(n <= 0){ clearInterval(t); btn.disabled = false; btn.textContent = '获取验证码'; }
+  }, 1000);
+  showToast('演示版：验证码已发送（任意 6 位数字可登录）');
+});
+$('#loginBtn').addEventListener('click', async ()=>{
+  const code = $('#code').value.trim();
+  if(!/^\d{6}$/.test(code)){ showToast('请输入 6 位数字验证码'); return; }
+  try{
+    await api('/api/login', {phone: $('#phone').value, code});
+    $('#login').style.display = 'none';
+    $('#app').style.display = 'block';
+    initSim();
+  }catch(e){ showToast(e.message); }
+});
+
+/* ==================== 导航 ==================== */
+document.querySelectorAll('.side-item').forEach(item=>{
+  item.addEventListener('click', ()=>{
+    document.querySelectorAll('.side-item').forEach(i=>i.classList.remove('active'));
+    item.classList.add('active');
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    $('#page-' + item.dataset.page).classList.add('active');
+  });
+});
+
+/* ==================== 教案反馈 ==================== */
+const uploadZone = $('#uploadZone');
+const fileInput = $('#fileInput');
+let lastReport = null;   // 最近一次评估结果
+let lastTopic = '函数的单调性';
+
+uploadZone.addEventListener('click', ()=>{ if(!$('#report').classList.contains('show')) fileInput.click(); });
+fileInput.addEventListener('change', ()=>{ if(fileInput.files.length) startFlow(fileInput.files[0]); });
+uploadZone.addEventListener('dragover', e=>{ e.preventDefault(); uploadZone.classList.add('drag'); });
+uploadZone.addEventListener('dragleave', ()=>uploadZone.classList.remove('drag'));
+uploadZone.addEventListener('drop', e=>{
+  e.preventDefault(); uploadZone.classList.remove('drag');
+  if(e.dataTransfer.files.length) startFlow(e.dataTransfer.files[0]);
+});
+
+const STEPS = ['解析教案', '结构化抽取', '五维评估', '汇总仲裁', '生成报告'];
+const STEP_MAP = {P1:0, P2:1, P3:1, P4:2, P5:3, P6:4};
+async function pollTask(tid, ui){
+  while(true){
+    const s = await fetch('/api/evaluate/' + tid).then(r=>r.json());
+    ui.bar.style.width = (s.progress||0) + '%';
+    ui.pct.textContent = (s.progress||0) + '%';
+    ui.setStep(STEP_MAP[(s.stage||'').slice(0,2)] ?? 0);
+    if(s.status === 'done' && s.result) return s.result;
+    if(s.status === 'failed') throw new Error(s.error || '评估失败');
+    await new Promise(r=>setTimeout(r, 500));
+  }
+}
+async function startFlow(file){
+  const panel = $('#progressPanel');
+  panel.classList.add('show');
+  $('#report').classList.remove('show');
+  const bar = $('#progressBar'), pct = $('#progressPct'), stepsBox = $('#progressSteps');
+  stepsBox.innerHTML = STEPS.map(s=>`<span class="st"><i></i>${s}</span>`).join('');
+  const stEls = [...stepsBox.children];
+  const setStep = idx=>{
+    stEls.forEach((el,i)=>{
+      el.classList.toggle('done', i < idx);
+      el.classList.toggle('on', i === idx);
+      if(i <= idx) el.querySelector('i').textContent = '✓';
+    });
+  };
+  bar.style.width = '8%'; pct.textContent = '8%';
+  setStep(0);
+  try{
+    // 1. 上传解析
+    let text = null, topic = null, fname = null;
+    if(file){
+      const fd = new FormData(); fd.append('file', file);
+      const up = await api('/api/upload', fd, true);
+      text = up.text; topic = up.topic; fname = up.filename;
+    }
+    bar.style.width = '28%'; pct.textContent = '28%'; setStep(1);
+    // 2-4. 创建异步评估任务并轮询（进度跟随后端六层阶段）
+    const demoText = file ? text : SAMPLE_LESSON;
+    const created = await api('/api/evaluate', {text: demoText, topic: topic || $('#chapterSel').value || lastTopic, lesson_type: $('#lessonType').value});
+    const resp = await pollTask(created.task_id, {bar, pct, setStep});
+    // 5. 渲染报告
+    lastReport = resp; lastTopic = topic || lastTopic;
+    renderReport(resp, topic || lastTopic, fname);
+    panel.classList.remove('show');
+    $('#report').classList.add('show');
+    showToast(resp.mock ? 'MOCK 模式：反馈已生成（配置 LLM_API_KEY 走真实模型）' : '反馈已生成：最该改的 3 处已置顶');
+  }catch(e){
+    panel.classList.remove('show');
+    showToast('评估失败：' + e.message);
+  }
+}
+
+function renderReport(report, topic, fname){
+  $('#reportTitle').textContent = `《${topic}》教案反馈报告`;
+  $('#reportMeta').innerHTML = `参考级反馈 · 基于班级记忆与认知障碍库${fname ? ' · ' + fname : ''}`;
+  $('#reportSummary').textContent = report.summary;
+  // Top3
+  const rankIco = ['①','②','③'];
+  $('#top3List').innerHTML = (report.top3||[]).map((t,i)=>{
+    const ev = t.evidence || {};
+    return `
+    <div class="card top-item">
+      <div class="rank">${i+1}</div>
+      <div class="dim">${t.dim||''} ${ev.source ? `<span class="chip chip-ev">${ev.source} · ${ev.confidence||''}置信</span>` : ''}</div>
+      <h4>${t.title||''}</h4>
+      ${t.quote ? `<div class="quote">原文：「${t.quote}」</div>` : ''}
+      <div class="fix"><span class="arrow">改法 →</span>${t.fix||''}</div>
+      ${t.arbitration_reason ? `<div class="why"><b>置顶理由</b>：${t.arbitration_reason}</div>` : ''}
+      <div class="adopt-row">
+        <button class="adopt-btn adopt" onclick="toggleAdopt(this)">已采纳</button>
+        <button class="adopt-btn ignore" onclick="toggleAdopt(this)">忽略</button>
+      </div>
+    </div>`;
+  }).join('');
+  // 五维
+  const dims = report.dims || {};
+  const tabs = $('#dimTabs'), panels = $('#dimPanels');
+  tabs.innerHTML = ''; panels.innerHTML = '';
+  Object.entries(dims).forEach(([id, d], i)=>{
+    const b = document.createElement('button');
+    b.className = 'dim-tab' + (i===0?' active':'');
+    b.textContent = d.name; b.onclick = ()=>showDim(id);
+    tabs.appendChild(b);
+    const p = document.createElement('div');
+    p.className = 'dim-panel' + (i===0?' active':'');
+    p.id = 'panel-' + id;
+    p.innerHTML = (d.issues||[]).map(iss=>`
+      <div class="card dim-issue">
+        <h5><span class="chip chip-red">问题</span>${iss.t}</h5>
+        ${iss.q ? `<div class="quote">原文：「${iss.q}」</div>` : ''}
+        <div class="fix"><span class="arrow">改法 →</span>${iss.f}</div>
+      </div>`).join('');
+    panels.appendChild(p);
+  });
+}
+function showDim(id){
+  document.querySelectorAll('.dim-tab').forEach((t,i)=>t.classList.toggle('active', t.textContent.includes(id)));
+  document.querySelectorAll('.dim-panel').forEach(p=>p.classList.remove('active'));
+  $('#panel-' + id).classList.add('active');
+}
+
+/* 采纳标记（MVP 前端状态） */
+function toggleAdopt(btn){
+  const row = btn.parentElement;
+  const a = row.querySelector('.adopt'), i = row.querySelector('.ignore');
+  if(btn.classList.contains('adopt')){
+    a.classList.toggle('on-adopt'); i.classList.remove('on-ignore');
+    showToast(a.classList.contains('on-adopt') ? '已采纳，将写入班级记忆' : '已取消标记');
+  } else {
+    i.classList.toggle('on-ignore'); a.classList.remove('on-adopt');
+    showToast(i.classList.contains('on-ignore') ? '已忽略，不再提示同类建议' : '已取消标记');
+  }
+}
+
+/* ==================== 学生预判 ==================== */
+async function runPredict(){
+  const topic = $('#predictTopic').value.trim() || '函数的单调性';
+  $('#predictResult').classList.remove('show');
+  showToast('正在检索认知障碍库…');
+  try{
+    const resp = await api('/api/predict', {topic});
+    $('#predictList').innerHTML = (resp.cards||[]).map((p,i)=>`
+      <div class="card predict-card">
+        <div class="pc-head">
+          <span class="chip chip-red">卡点 ${i+1}</span>
+          <span class="conf conf-${p.conf === '高' ? 'high' : p.conf === '中' ? 'mid' : 'low'}">${p.conf}置信 · ${p.dim}</span>
+        </div>
+        <div class="pc-step">${p.step}</div>
+        <div class="pc-wrong"><b>典型错答：</b>${p.wrong}</div>
+        <div class="pc-cause">错因：${p.cause}</div>
+        <div class="pc-fix"><span class="arrow">建议教法 →</span>${p.fix}</div>
+      </div>`).join('');
+    $('#predictResult').classList.add('show');
+    showToast(resp.mock ? `MOCK 模式：已预判「${topic}」的 ${(resp.cards||[]).length} 个卡点` : `已根据认知障碍库预判「${topic}」的 ${(resp.cards||[]).length} 个卡点`);
+  }catch(e){ showToast('预判失败：' + e.message); }
+}
+
+/* ==================== 模拟试讲 ==================== */
+let simLevel = '中';
+let simFirstMsg = true;
+let simHistory = [];
+let simSwitches = [];
+
+function initSim(){
+  if(!simFirstMsg) return;
+  simFirstMsg = false;
+  simHistory = []; simSwitches = [];
+  pushMsg('student', '老师好，我们开始讲《函数单调性》吧。前面的内容我都学过：必修一和必修二第1章前两节都会。这个单调性我还不会，您讲给我听。（人设：中档学生，已学范围全部掌握）');
+}
+
+function pushMsg(who, text){
+  const body = $('#chatBody');
+  const el = document.createElement('div');
+  el.className = 'msg ' + who;
+  const av = who === 'teacher' ? '师' : '学';
+  el.innerHTML = `<div class="av">${av}</div><div class="bubble">${text}</div>`;
+  body.appendChild(el);
+  body.scrollTop = body.scrollHeight;
+}
+
+function setLevel(lv){
+  simLevel = lv;
+  simSwitches.push(lv);
+  document.querySelectorAll('.level-btn').forEach(b=>b.classList.toggle('active', b.dataset.level === lv));
+  $('#levelChip').textContent = lv + '档学生';
+  const tip = {优:'只是这些内容我掌握得很扎实，能跟变式。',中:'大体掌握，个别细节有漏洞。',弱:'学过的内容也有不少漏洞，可能会装懂或沉默。'}[lv];
+  pushMsg('student', `（老师切换档位：我现在是${lv}档学生。已学范围不变，还是必修一全部 + 必修二第1章前两节。${tip}）`);
+}
+
+async function sendMsg(){
+  const input = $('#chatInput');
+  const text = input.value.trim();
+  if(!text) return;
+  pushMsg('teacher', text);
+  simHistory.push({who:'teacher', text});
+  input.value = '';
+  try{
+    const resp = await api('/api/sim/chat', {topic: lastTopic, level: simLevel, history: simHistory});
+    simHistory.push({who:'student', text: resp.reply});
+    pushMsg('student', resp.reply);
+  }catch(e){
+    showToast('模拟学生无响应：' + e.message);
+  }
+}
+
+async function endSim(){
+  const btn = document.querySelector('button[onclick="endSim()"]');
+  btn && (btn.textContent = '生成中…');
+  try{
+    const resp = await api('/api/sim/summary', {topic: lastTopic, level: simLevel, history: simHistory, level_switches: simSwitches});
+    $('#simSummary').innerHTML = `
+      <h4>会话小结 · 已写入班级记忆</h4>
+      <div class="card ss-block">
+        <h5><span class="tag" style="background:var(--green)">✓</span>讲法顺利通过</h5>
+        <ul>${(resp.ok||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
+      </div>
+      <div class="card ss-block">
+        <h5><span class="tag" style="background:var(--red)">!</span>卡点（引用对话原文）</h5>
+        <ul>${(resp.issues||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
+      </div>
+      <div class="card ss-block">
+        <h5><span class="tag" style="background:var(--gold)">↗</span>对教案 / 讲法的调整建议</h5>
+        <ul>${(resp.advice||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
+      </div>`;
+    $('#simSummary').classList.add('show');
+    showToast('会话小结已生成并写入班级记忆');
+    $('#simSummary').scrollIntoView({behavior:'smooth'});
+  }catch(e){
+    showToast('小结生成失败：' + e.message);
+  }
+  btn && (btn.textContent = '结束试讲，生成小结');
+}
+
+function resetSim(){
+  $('#chatBody').innerHTML = '';
+  $('#simSummary').classList.remove('show');
+  simFirstMsg = true;
+  initSim();
+}
+
+/* ==================== 班级设置 ==================== */
+async function loadSettings(){
+  try{
+    const s = await fetch('/api/settings').then(r=>r.json());
+    $('#chapterSel').value = '';
+    // 教材与进度：用知识库目录树动态填充
+    const books = s.textbook || {};
+    const bookKeys = Object.keys(books);
+    if(bookKeys.length){
+      $('#bookSel').innerHTML = bookKeys.map(b=>`<option value="${b}">${b}</option>`).join('');
+      // 回显当前册/章/节/课题
+      $('#bookSel').value = bookKeys.includes(s.book_no) ? s.book_no : bookKeys[0];
+      const fillChapters = (bn)=>{
+        const chs = books[bn] || [];
+        $('#chapterProgressSel').innerHTML = chs.map((c,i)=>`<option value="${i+1}" data-name="${c[1]}">${c[0]} ${c[1]}</option>`).join('');
+        $('#chapterProgressSel').value = String(s.chapter || 1);
+      };
+      fillChapters($('#bookSel').value);
+      $('#bookSel').addEventListener('change', ()=>fillChapters($('#bookSel').value));
+      $('#sectionSel').value = `第${s.section||1}节`;
+      $('#topicSel').value = s.topic || '';
+    }
+    if(s.mastery && s.mastery.length){
+      $('#masteryList').innerHTML = s.mastery.map(m=>`
+        <div class="mastery-row">
+          <span>${m.chapter}</span>
+          <div class="m-levels">
+            <button class="good" data-v="好">好</button>
+            <button class="mid" data-v="中">中</button>
+            <button class="weak" data-v="弱">弱</button>
+          </div>
+        </div>`).join('');
+      document.querySelectorAll('.mastery-row').forEach((row)=>{
+        const level = s.mastery.find(m=>m.chapter === row.querySelector('span').textContent)?.level || '中';
+        row.querySelector('button[data-v="'+level+'"]').classList.add(level === '好' ? 'good' : level === '中' ? 'mid' : 'weak');
+        row.querySelectorAll('.m-levels button').forEach(b=>{
+          b.addEventListener('click', async ()=>{
+            row.querySelectorAll('.m-levels button').forEach(x=>x.className = '');
+            const cls = b.dataset.v === '好' ? 'good' : b.dataset.v === '中' ? 'mid' : 'weak';
+            b.classList.add(cls);
+            await api('/api/mastery', {chapter: row.querySelector('span').textContent, level: b.dataset.v});
+            showToast('掌握度已保存');
+          });
+        });
+      });
+    }
+  }catch(e){ /* 后端未起时静默 */ }
+}
+loadSettings();
+loadModel();
+
+async function saveSettings(){
+  try{
+    const data = {
+      book_no: $('#bookSel').value,
+      chapter: parseInt($('#chapterProgressSel').value || '1'),
+      section: parseInt(($('#sectionSel').value.match(/\d+/)||['1'])[0]),
+      topic: $('#topicSel').value.trim() || '函数的单调性'
+    };
+    await api('/api/settings', data);
+    showToast('进度已保存：'+ data.book_no +' 第'+ data.chapter +'章 第'+ data.section +'节');
+  }catch(e){
+    showToast('保存失败：' + e.message);
+  }
+}
+
+/* ==================== 模型配置（内置 tokendance / 自接 OpenAI 兼容） ==================== */
+async function loadModel(){
+  try{
+    const m = await fetch('/api/model').then(r=>r.json());
+    const mode = (m.mode === 'custom' && m.has_key) ? 'custom' : 'builtin';
+    document.querySelectorAll('input[name="mmode"]').forEach(r=>r.checked = (r.value === mode));
+    $('#modelBase').value = mode === 'custom' ? m.base_url : (m.builtin_base_url || '');
+    $('#modelName').value = mode === 'custom' ? m.model : (m.builtin_model || '');
+    $('#modelKey').value = '';
+    $('#modelKey').placeholder = m.has_key ? '已配置（'+m.key_masked+'），留空则不修改' : 'sk-...';
+    $('#modelStatus').textContent = m.mock ? '当前：演示模式（未配置 key，返回内置示例）' : '当前：真实模型已生效';
+    toggleModelBox();
+  }catch(e){ $('#modelStatus').textContent = '模型配置加载失败'; }
+}
+function toggleModelBox(){
+  const custom = document.querySelector('input[name="mmode"]:checked').value === 'custom';
+  $('#customModelBox').style.display = custom ? 'flex' : 'none';
+}
+async function saveModel(){
+  const mode = document.querySelector('input[name="mmode"]:checked').value;
+  const body = {mode, base_url: $('#modelBase').value.trim(), model: $('#modelName').value.trim(), api_key: $('#modelKey').value.trim()};
+  try{
+    const r = await api('/api/model', body);
+    showToast(r.mock ? '已保存（当前无 key，运行在演示模式）' : '已保存：真实模型已生效');
+    loadModel();
+  }catch(e){ showToast(e.message || '保存失败'); }
+}
+async function testModel(){
+  const body = {mode:'custom', base_url: $('#modelBase').value.trim(), model: $('#modelName').value.trim(), api_key: $('#modelKey').value.trim()};
+  if(!body.base_url || !body.model){ showToast('请先填写 Base URL 与模型名'); return; }
+  showToast('测试连接中，请稍候...');
+  try{
+    const r = await api('/api/model/test', body);
+    if(r.ok) showToast('连接成功：' + r.latency_ms + 'ms');
+    else showToast('连接失败：' + (r.error || '未知错误'));
+  }catch(e){ showToast(e.message || '测试失败'); }
+}
+
+/* ==================== 我的档案（人格报告 / 个人档案） ==================== */
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+async function loadProfile(){
+  try{
+    const p = await fetch('/api/profile').then(r=>r.json());
+    const pct = v => Math.round((v||0)*100);
+    $('#profileData').innerHTML =
+      `<div class="db-stat"><b>${p.lesson_count}</b><span>已评估教案</span></div>` +
+      `<div class="db-stat"><b>${p.sim_count}</b><span>试讲会话</span></div>` +
+      `<div class="db-stat"><b>${pct(p.adopted_rate)}%</b><span>建议采纳率</span></div>`;
+    const b = $('#profileBody');
+    if(p.needs_more){
+      const lr = Math.min(p.lesson_count, p.needed.lesson);
+      const sr = Math.min(p.sim_count, p.needed.sim);
+      b.innerHTML = `
+        <div class="card set-card">
+          <h4>档案生成中</h4>
+          <div class="sc-sub">达到 ${p.needed.lesson} 份教案 + ${p.needed.sim} 次试讲后自动开放完整画像</div>
+          <div class="pf-need">
+            <span class="kit">教案 ${lr}/${p.needed.lesson}</span>
+            <span class="kit">试讲 ${sr}/${p.needed.sim}</span>
+          </div>
+        </div>`;
+      return;
+    }
+    const r = p.report || {style:{label:'综合型',desc:''},insights:[]};
+    const conf = {高:'高置信',中:'中置信',低:'低置信'};
+    b.innerHTML = `
+      <div class="card set-card">
+        <div class="pf-style">
+          <div class="badge">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M12 3l7 5v8l-7 5-7-5V8l7-5z"/></svg>
+            ${esc(r.style.label)}
+          </div>
+          <div class="desc">${esc(r.style.desc)}</div>
+        </div>
+      </div>
+      <div class="card set-card pf-block">
+        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>带证据的洞察</h4>
+        <div id="pfInsights">${(r.insights||[]).map(i=>`
+          <div class="insight">
+            <div class="tag"><span class="kit">${esc(i.aspect_label||'')}</span><span class="conf">${conf[i.confidence]||''}</span></div>
+            <div class="finding">${esc(i.finding)}</div>
+            ${i.evidence ? `<div class="ev">${esc(i.evidence)}</div>` : ''}
+          </div>`).join('')}
+        </div>
+      </div>
+      <div class="card set-card pf-block">
+        <h4><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19l3-3M20 5L9 16M15 19h5"/></svg>建议</h4>
+        ${(r.suggestions||[]).map((s,idx)=>`<div class="sug"><span class="num">${idx+1}</span><span>${esc(s)}</span></div>`).join('') || '<div class="sc-sub" style="margin-bottom:0">暂无建议</div>'}
+      </div>
+      <div class="pf-actions">
+        <span class="pf-stale">${p.stale ? '有新增数据，可刷新更新报告' : ''}</span>
+        <button class="btn btn-ghost" onclick="refreshProfile()">刷新档案</button>
+      </div>`;
+  }catch(e){ $('#profileBody').innerHTML = '<div class="card set-card"><div class="sc-sub">档案加载失败，请稍后重试</div></div>'; }
+}
+async function refreshProfile(){
+  showToast('正在重新合成画像，请稍候...');
+  try{
+    await api('/api/profile/refresh', {});
+    showToast('画像已更新');
+    loadProfile();
+  }catch(e){ showToast(e.message || '刷新失败'); }
+}
+// 每次进入档案页时刷新
+document.querySelector('.side-item[data-page="profile"]').addEventListener('click', ()=>{ loadProfile(); });
+
+/* ==================== 内置示例教案（无文件上传时演示用） ==================== */
+const SAMPLE_LESSON = `课题：函数的单调性（人教A版必修二第3章）
+教学目标：
+1. 理解函数单调性的概念
+2. 掌握用定义判断函数单调性的方法
+3. 会求函数的单调区间
+重点：函数单调性的定义与判断
+难点：用定义法证明函数的单调性
+教学过程：
+一、导入（5分钟）：从气温变化图引入，问学生"气温是升还是降"
+二、新授（15分钟）：
+  定义：设函数f(x)定义域为D，区间I⊆D，任意x1,x2∈I，当x1<x2时，f(x1)<f(x2)，则f(x)在I上单调递增
+  例题1：判断 f(x)=x² 在 (0,+∞) 的单调性
+  例题2：证明 f(x)=x+1/x 在 (0,1) 上单调递减
+三、练习（10分钟）：课本练习1-3
+四、小结（5分钟）：回顾定义
+五、作业：课本习题
+板书设计：略`;
+
+console.log('备课导师前端 v0.2 · 真实 API 模式');
+</script>
+</body>
+</html>
